@@ -20,7 +20,7 @@ fn main() {
         }))
         .init_resource::<MapNeedsRedraw>()
         .add_systems(Startup, (spawn_camera, spawn_map))
-        .add_systems(Update, redraw_map)
+        .add_systems(Update, (request_redraw, redraw_map))
         .run();
 }
 
@@ -50,12 +50,7 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
     for x in 0..map::MAP_SIZE {
         for y in 0..map::MAP_SIZE {
             let tile = map.get_at((x, y));
-            let color = match tile {
-                map::Tile::Empty => Color::WHITE,
-                map::Tile::Neighbor(count) if count == 1 => Color::YELLOW,
-                map::Tile::Neighbor(_) => Color::ORANGE,
-                map::Tile::Mine => Color::RED,
-            };
+            let color = tile.get_color();
 
             let mut current_pos_transform = Transform::from_xyz(
                 x as f32 * TILE_SIZE - HALF_WINDOW_SIZE + 0.5 * TILE_SIZE,
@@ -77,7 +72,6 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
             ));
 
             // Spawn text
-
             if let map::Tile::Neighbor(count) = tile {
                 info!("Spawning text for mine neighbor");
 
@@ -99,6 +93,12 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(map);
 }
 
+fn request_redraw(mut needs_redraw: ResMut<MapNeedsRedraw>, keys: Res<Input<KeyCode>>) {
+    if keys.just_pressed(KeyCode::Space) {
+        needs_redraw.0 = true;
+    }
+}
+
 fn redraw_map(
     map: Query<&Map>,
     mut sprite_query: Query<(&mut Sprite, &TileReference)>,
@@ -110,6 +110,8 @@ fn redraw_map(
     if !needs_redraw.0 {
         return;
     }
+
+    info!("Redrawing map");
 
     let map = map.get_single().unwrap();
 
