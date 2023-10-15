@@ -100,10 +100,9 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn redraw_map(
-    mut commands: Commands,
     map: Query<&Map>,
-    mut sprite: Query<(&mut Sprite, &TileReference)>,
-    mut text_transform: Query<(Entity, &Transform, &TileReference), With<Text>>,
+    mut sprite_query: Query<(&mut Sprite, &TileReference)>,
+    mut text_query: Query<(&mut Text, &TileReference)>,
     mut needs_redraw: ResMut<MapNeedsRedraw>,
     asset_server: Res<AssetServer>,
 ) {
@@ -115,42 +114,27 @@ fn redraw_map(
     let map = map.get_single().unwrap();
 
     // Update tile color
-    for (mut sprite, TileReference(x, y)) in sprite.iter_mut() {
+    for (mut sprite, TileReference(x, y)) in sprite_query.iter_mut() {
         let tile = map.get_at((*x, *y));
         sprite.color = tile.get_color();
     }
 
-    // Redraw text
+    // Update text
     let font = asset_server.load("fonts/Inter-Regular.ttf");
     let text_style = TextStyle {
         font,
         font_size: 30.0,
         color: Color::BLACK,
     };
-    let text_alignment = TextAlignment::Center;
 
-    for (entity, transform, TileReference(x, y)) in text_transform.iter_mut() {
+    for (mut text, TileReference(x, y)) in text_query.iter_mut() {
         let tile = map.get_at((*x, *y));
 
-        commands.entity(entity).despawn();
-
         if let map::Tile::Neighbor(count) = tile {
-            info!("Spawning text for mine neighbor");
-
-            let mut transform = *transform;
-            transform.translation.z += 0.1;
-
-            commands.spawn((
-                Text2dBundle {
-                    text: Text::from_section(format!("{count}"), text_style.clone())
-                        .with_alignment(text_alignment),
-                    transform: transform,
-                    ..Default::default()
-                },
-                TileReference(*x, *y),
-            ));
+            text.sections = vec![TextSection::new(format!("{count}"), text_style.clone())];
         }
     }
 
+    // We just redrew, don't need to anymore
     needs_redraw.0 = false;
 }
