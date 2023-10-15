@@ -11,6 +11,16 @@ pub enum Tile {
     Mine,
 }
 
+impl Tile {
+    pub fn get_color(self) -> Color {
+        match self {
+            Tile::Empty => Color::WHITE,
+            Tile::Neighbor(_) => Color::YELLOW,
+            Tile::Mine => Color::RED,
+        }
+    }
+}
+
 #[derive(Component)]
 pub struct Map {
     pub mine_count: u32,
@@ -40,10 +50,6 @@ impl Map {
                 mines_left -= 1;
             }
         }
-    }
-
-    fn index(tiles: &Array2D<Tile>, x: isize, y: isize) -> Option<&Tile> {
-        tiles.get(x as usize, y as usize)
     }
 
     fn count_neighbors(tiles: &mut Array2D<Tile>, x: isize, y: isize) {

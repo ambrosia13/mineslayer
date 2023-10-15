@@ -5,6 +5,7 @@ use map::Map;
 
 pub const WINDOW_SIZE: u32 = 800;
 pub const HALF_WINDOW_SIZE: f32 = 400.0;
+pub const TILE_SIZE: f32 = 2.0 * HALF_WINDOW_SIZE / map::MAP_SIZE as f32;
 
 fn main() {
     App::new()
@@ -17,13 +18,21 @@ fn main() {
             }),
             ..Default::default()
         }))
+        .init_resource::<MapNeedsRedraw>()
         .add_systems(Startup, (spawn_camera, spawn_map))
+        .add_systems(Update, redraw_map_colors)
         .run();
 }
 
 fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
+
+#[derive(Resource, Default)]
+pub struct MapNeedsRedraw(bool);
+
+#[derive(Component)]
+pub struct TileReference(usize, usize);
 
 fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
     info!("Spawning map");
@@ -37,7 +46,6 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_alignment = TextAlignment::Center;
 
     let map = Map::new(20);
-    let tile_size = 2.0 * HALF_WINDOW_SIZE / map::MAP_SIZE as f32;
 
     for x in 0..map::MAP_SIZE {
         for y in 0..map::MAP_SIZE {
@@ -50,20 +58,23 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
             };
 
             let mut current_pos_transform = Transform::from_xyz(
-                x as f32 * tile_size - HALF_WINDOW_SIZE + 0.5 * tile_size,
-                y as f32 * tile_size - HALF_WINDOW_SIZE + 0.5 * tile_size,
+                x as f32 * TILE_SIZE - HALF_WINDOW_SIZE + 0.5 * TILE_SIZE,
+                y as f32 * TILE_SIZE - HALF_WINDOW_SIZE + 0.5 * TILE_SIZE,
                 0.0,
             );
 
-            commands.spawn(SpriteBundle {
-                sprite: Sprite {
-                    color,
-                    custom_size: Some(Vec2::splat(tile_size)),
+            commands.spawn((
+                SpriteBundle {
+                    sprite: Sprite {
+                        color,
+                        custom_size: Some(Vec2::splat(TILE_SIZE)),
+                        ..Default::default()
+                    },
+                    transform: current_pos_transform,
                     ..Default::default()
                 },
-                transform: current_pos_transform,
-                ..Default::default()
-            });
+                TileReference(x, y),
+            ));
 
             // Spawn text
 
@@ -72,15 +83,36 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
 
                 current_pos_transform.translation.z += 0.1;
 
-                commands.spawn(Text2dBundle {
-                    text: Text::from_section(format!("{count}"), text_style.clone())
-                        .with_alignment(text_alignment),
-                    transform: current_pos_transform,
-                    ..Default::default()
-                });
+                commands.spawn((
+                    Text2dBundle {
+                        text: Text::from_section(format!("{count}"), text_style.clone())
+                            .with_alignment(text_alignment),
+                        transform: current_pos_transform,
+                        ..Default::default()
+                    },
+                    TileReference(x, y),
+                ));
             }
         }
     }
 
     commands.spawn(map);
+}
+
+fn redraw_map_colors(
+    map: Query<&Map>,
+    mut sprite: Query<(&mut Sprite, &TileReference)>,
+    needs_redraw: Res<MapNeedsRedraw>,
+) {
+    // Don't do anything if we don't need redraw
+    if !needs_redraw.0 {
+        return;
+    }
+
+    let map = map.get_single().unwrap();
+
+    for (mut sprite, TileReference(x, y)) in sprite.iter_mut() {
+        let tile = map.get_at((*x, *y));
+        sprite.color = tile.get_color();
+    }
 }
