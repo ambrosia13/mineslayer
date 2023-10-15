@@ -31,7 +31,7 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/Inter-Regular.ttf");
     let text_style = TextStyle {
         font,
-        font_size: 20.0,
+        font_size: 30.0,
         color: Color::BLACK,
     };
     let text_alignment = TextAlignment::Center;
