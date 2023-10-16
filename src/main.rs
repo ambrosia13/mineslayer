@@ -3,6 +3,8 @@ mod map;
 use bevy::{prelude::*, window::WindowResolution};
 use map::Map;
 
+use crate::map::TileDisplay;
+
 pub const WINDOW_SIZE: u32 = 800;
 pub const HALF_WINDOW_SIZE: f32 = 400.0;
 pub const TILE_SIZE: f32 = 2.0 * HALF_WINDOW_SIZE / map::MAP_SIZE as f32;
@@ -52,6 +54,8 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
             let tile = map.get_at((x, y));
             let color = tile.get_color();
 
+            let TileDisplay(tile_is_visible, tile) = tile;
+
             let mut current_pos_transform = Transform::from_xyz(
                 x as f32 * TILE_SIZE - HALF_WINDOW_SIZE + 0.5 * TILE_SIZE,
                 y as f32 * TILE_SIZE - HALF_WINDOW_SIZE + 0.5 * TILE_SIZE,
@@ -77,9 +81,15 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
 
                 current_pos_transform.translation.z += 0.1;
 
+                let text = if tile_is_visible {
+                    format!("{count}")
+                } else {
+                    String::new()
+                };
+
                 commands.spawn((
                     Text2dBundle {
-                        text: Text::from_section(format!("{count}"), text_style.clone())
+                        text: Text::from_section(text, text_style.clone())
                             .with_alignment(text_alignment),
                         transform: current_pos_transform,
                         ..Default::default()
@@ -130,10 +140,16 @@ fn redraw_map(
     };
 
     for (mut text, TileReference(x, y)) in text_query.iter_mut() {
-        let tile = map.get_at((*x, *y));
+        let TileDisplay(tile_is_visible, tile) = map.get_at((*x, *y));
 
         if let map::Tile::Neighbor(count) = tile {
-            text.sections = vec![TextSection::new(format!("{count}"), text_style.clone())];
+            let text_string = if tile_is_visible {
+                format!("{count}")
+            } else {
+                String::new()
+            };
+
+            text.sections = vec![TextSection::new(text_string, text_style.clone())];
         }
     }
 

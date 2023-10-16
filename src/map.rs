@@ -25,6 +25,19 @@ impl Tile {
 pub struct Map {
     pub mine_count: u32,
     pub tiles: Array2D<Tile>,
+    pub visibility: Array2D<bool>,
+}
+
+pub struct TileDisplay(pub bool, pub Tile);
+
+impl TileDisplay {
+    pub fn get_color(&self) -> Color {
+        if !self.0 {
+            Color::GRAY
+        } else {
+            self.1.get_color()
+        }
+    }
 }
 
 impl Map {
@@ -32,11 +45,15 @@ impl Map {
         Self {
             mine_count,
             tiles: Self::generate(mine_count),
+            visibility: Array2D::filled_with(false, MAP_SIZE, MAP_SIZE),
         }
     }
 
-    pub fn get_at(&self, index: (usize, usize)) -> Tile {
-        self.tiles[(index.0, index.1)]
+    pub fn get_at(&self, index: (usize, usize)) -> TileDisplay {
+        TileDisplay(
+            self.visibility[(index.0, index.1)],
+            self.tiles[(index.0, index.1)],
+        )
     }
 
     fn place_bombs(tiles: &mut Array2D<Tile>, mine_count: u32) {
