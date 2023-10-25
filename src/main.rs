@@ -8,6 +8,11 @@ use crate::map::TileDisplay;
 pub const WINDOW_SIZE: u32 = 800;
 pub const HALF_WINDOW_SIZE: f32 = 400.0;
 pub const TILE_SIZE: f32 = 2.0 * HALF_WINDOW_SIZE / map::MAP_SIZE as f32;
+pub const GRID_SIZE: f32 = 2.0;
+
+pub const TILE_Z: f32 = 0.0;
+pub const TEXT_Z: f32 = 1.0;
+pub const GRID_Z: f32 = 2.0;
 
 fn main() {
     App::new()
@@ -21,7 +26,7 @@ fn main() {
             ..Default::default()
         }))
         .init_resource::<MapNeedsRedraw>()
-        .add_systems(Startup, (spawn_camera, spawn_map))
+        .add_systems(Startup, (spawn_camera, spawn_map, spawn_grid))
         .add_systems(Update, (request_redraw, redraw_map))
         .run();
 }
@@ -59,7 +64,7 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
             let mut current_pos_transform = Transform::from_xyz(
                 x as f32 * TILE_SIZE - HALF_WINDOW_SIZE + 0.5 * TILE_SIZE,
                 y as f32 * TILE_SIZE - HALF_WINDOW_SIZE + 0.5 * TILE_SIZE,
-                0.0,
+                TILE_Z,
             );
 
             commands.spawn((
@@ -79,7 +84,7 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
             if let map::Tile::Neighbor(count) = tile {
                 info!("Spawning text for mine neighbor");
 
-                current_pos_transform.translation.z += 0.1;
+                current_pos_transform.translation.z = TEXT_Z;
 
                 let text = if tile_is_visible {
                     format!("{count}")
@@ -101,6 +106,38 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
     }
 
     commands.spawn(map);
+}
+
+fn spawn_grid(mut commands: Commands) {
+    for i in 0..(map::MAP_SIZE - 1) {
+        commands.spawn(SpriteBundle {
+            sprite: Sprite {
+                color: Color::BLACK,
+                custom_size: Some(Vec2::new(GRID_SIZE, HALF_WINDOW_SIZE * 2.0)),
+                ..Default::default()
+            },
+            transform: Transform::from_xyz(
+                i as f32 * TILE_SIZE - HALF_WINDOW_SIZE + TILE_SIZE,
+                0.0,
+                GRID_Z,
+            ),
+            ..Default::default()
+        });
+
+        commands.spawn(SpriteBundle {
+            sprite: Sprite {
+                color: Color::BLACK,
+                custom_size: Some(Vec2::new(HALF_WINDOW_SIZE * 2.0, GRID_SIZE)),
+                ..Default::default()
+            },
+            transform: Transform::from_xyz(
+                0.0,
+                i as f32 * TILE_SIZE - HALF_WINDOW_SIZE + TILE_SIZE,
+                GRID_Z,
+            ),
+            ..Default::default()
+        });
+    }
 }
 
 fn request_redraw(mut needs_redraw: ResMut<MapNeedsRedraw>, keys: Res<Input<KeyCode>>) {

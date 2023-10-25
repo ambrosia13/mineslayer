@@ -45,7 +45,7 @@ impl Map {
         Self {
             mine_count,
             tiles: Self::generate(mine_count),
-            visibility: Array2D::filled_with(false, MAP_SIZE, MAP_SIZE),
+            visibility: Array2D::filled_with(true, MAP_SIZE, MAP_SIZE),
         }
     }
 
