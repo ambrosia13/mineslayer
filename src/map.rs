@@ -2,7 +2,8 @@ use array2d::Array2D;
 use bevy::prelude::*;
 use rand::prelude::*;
 
-pub const MAP_SIZE: usize = 20;
+pub const MAP_SIZE: usize = 40;
+pub const MINE_COUNT: u32 = 120;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Tile {
@@ -45,7 +46,7 @@ impl Map {
         Self {
             mine_count,
             tiles: Self::generate(mine_count),
-            visibility: Array2D::filled_with(true, MAP_SIZE, MAP_SIZE),
+            visibility: Array2D::filled_with(false, MAP_SIZE, MAP_SIZE),
         }
     }
 
@@ -54,6 +55,54 @@ impl Map {
             self.visibility[(index.0, index.1)],
             self.tiles[(index.0, index.1)],
         )
+    }
+
+    pub fn set_visibility_at(&mut self, index: (usize, usize), visibility: bool) {
+        self.visibility[index] = visibility;
+    }
+
+    /// Does one step of propagating visible tiles. If there was any visibility change, returns true. Otherwise returns false.
+    pub fn propagate_visibility(&mut self) -> bool {
+        let directions = [(0, 1), (0, -1), (-1, 0), (1, 0)];
+
+        let mut new_visibility = self.visibility.clone();
+
+        for x in 0..(MAP_SIZE as isize) {
+            for y in 0..(MAP_SIZE as isize) {
+                let should_propagate = directions
+                    .iter()
+                    .filter_map(|(dx, dy)| {
+                        let row = (x + dx) as usize;
+                        let column = (y + dy) as usize;
+
+                        let tile = self.tiles.get(row, column);
+
+                        if let Some(tile) = tile {
+                            let visible = self.visibility.get(row, column);
+
+                            if *tile == Tile::Empty {
+                                visible
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .any(|visible| *visible);
+
+                if should_propagate {
+                    new_visibility[(x as usize, y as usize)] = true;
+                }
+            }
+        }
+
+        if self.visibility != new_visibility {
+            self.visibility = new_visibility;
+            true
+        } else {
+            false
+        }
     }
 
     fn place_bombs(tiles: &mut Array2D<Tile>, mine_count: u32) {

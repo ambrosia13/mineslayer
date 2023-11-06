@@ -1,6 +1,9 @@
 mod map;
 
-use bevy::{prelude::*, window::WindowResolution};
+use bevy::{
+    prelude::*,
+    window::{PrimaryWindow, WindowResolution},
+};
 use map::Map;
 
 use crate::map::TileDisplay;
@@ -27,7 +30,15 @@ fn main() {
         }))
         .init_resource::<MapNeedsRedraw>()
         .add_systems(Startup, (spawn_camera, spawn_map, spawn_grid))
-        .add_systems(Update, (request_redraw, redraw_map))
+        .add_systems(
+            Update,
+            (
+                redraw_map,
+                detect_tile_updates,
+                (handle_tile_updates, propagate_visibility).chain(),
+                reset_map,
+            ),
+        )
         .run();
 }
 
@@ -41,6 +52,14 @@ pub struct MapNeedsRedraw(bool);
 #[derive(Component)]
 pub struct TileReference(usize, usize);
 
+pub enum TileUpdateType {
+    FlagPlaced,
+    Revealed,
+}
+
+#[derive(Component)]
+pub struct TileUpdate((usize, usize), TileUpdateType);
+
 fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
     info!("Spawning map");
 
@@ -52,14 +71,14 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
     };
     let text_alignment = TextAlignment::Center;
 
-    let map = Map::new(20);
+    let map = Map::new(map::MINE_COUNT);
 
     for x in 0..map::MAP_SIZE {
         for y in 0..map::MAP_SIZE {
-            let tile = map.get_at((x, y));
-            let color = tile.get_color();
+            let tile_display = map.get_at((x, y));
+            let color = tile_display.get_color();
 
-            let TileDisplay(tile_is_visible, tile) = tile;
+            let TileDisplay(tile_is_visible, tile) = tile_display;
 
             let mut current_pos_transform = Transform::from_xyz(
                 x as f32 * TILE_SIZE - HALF_WINDOW_SIZE + 0.5 * TILE_SIZE,
@@ -81,27 +100,30 @@ fn spawn_map(mut commands: Commands, asset_server: Res<AssetServer>) {
             ));
 
             // Spawn text
-            if let map::Tile::Neighbor(count) = tile {
-                info!("Spawning text for mine neighbor");
+            info!("Spawning text for mine neighbor");
 
-                current_pos_transform.translation.z = TEXT_Z;
+            current_pos_transform.translation.z = TEXT_Z;
 
-                let text = if tile_is_visible {
-                    format!("{count}")
-                } else {
-                    String::new()
-                };
+            let text = match tile {
+                map::Tile::Neighbor(count) => {
+                    if tile_is_visible {
+                        format!("{count}")
+                    } else {
+                        String::new()
+                    }
+                }
+                _ => String::new(),
+            };
 
-                commands.spawn((
-                    Text2dBundle {
-                        text: Text::from_section(text, text_style.clone())
-                            .with_alignment(text_alignment),
-                        transform: current_pos_transform,
-                        ..Default::default()
-                    },
-                    TileReference(x, y),
-                ));
-            }
+            commands.spawn((
+                Text2dBundle {
+                    text: Text::from_section(text, text_style.clone())
+                        .with_alignment(text_alignment),
+                    transform: current_pos_transform,
+                    ..Default::default()
+                },
+                TileReference(x, y),
+            ));
         }
     }
 
@@ -140,8 +162,63 @@ fn spawn_grid(mut commands: Commands) {
     }
 }
 
-fn request_redraw(mut needs_redraw: ResMut<MapNeedsRedraw>, keys: Res<Input<KeyCode>>) {
-    if keys.just_pressed(KeyCode::Space) {
+fn detect_tile_updates(
+    mut commands: Commands,
+    mouse_buttons: Res<Input<MouseButton>>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+) {
+    let left_pressed = mouse_buttons.just_pressed(MouseButton::Left);
+    let right_pressed = mouse_buttons.just_pressed(MouseButton::Right);
+
+    if left_pressed || right_pressed {
+        let update_type = if left_pressed {
+            TileUpdateType::Revealed
+        } else {
+            TileUpdateType::FlagPlaced
+        };
+
+        let window = window_query.get_single().unwrap();
+
+        if let Some(cursor_position) = window.cursor_position() {
+            let cursor_position =
+                Vec2::new(cursor_position.x, WINDOW_SIZE as f32 - cursor_position.y);
+
+            let tile_index = (cursor_position / TILE_SIZE).as_ivec2();
+            let tile_index = (tile_index.x as usize, tile_index.y as usize);
+
+            commands.spawn(TileUpdate(tile_index, update_type));
+        }
+    }
+}
+
+fn handle_tile_updates(
+    mut commands: Commands,
+    tile_update_query: Query<(Entity, &TileUpdate)>,
+    mut needs_redraw: ResMut<MapNeedsRedraw>,
+    mut map_query: Query<&mut Map>,
+) {
+    let mut map = map_query.get_single_mut().unwrap();
+    let mut update_occurred = false;
+
+    for (entity, TileUpdate(tile_index, update_type)) in tile_update_query.iter() {
+        match *update_type {
+            TileUpdateType::FlagPlaced => todo!(),
+            TileUpdateType::Revealed => map.set_visibility_at(*tile_index, true),
+        }
+
+        commands.entity(entity).despawn();
+
+        update_occurred = true;
+    }
+
+    needs_redraw.0 = update_occurred;
+}
+
+fn propagate_visibility(mut map_query: Query<&mut Map>, mut needs_redraw: ResMut<MapNeedsRedraw>) {
+    let mut map = map_query.get_single_mut().unwrap();
+
+    let visibility_changed = map.propagate_visibility();
+    if visibility_changed {
         needs_redraw.0 = true;
     }
 }
@@ -179,17 +256,36 @@ fn redraw_map(
     for (mut text, TileReference(x, y)) in text_query.iter_mut() {
         let TileDisplay(tile_is_visible, tile) = map.get_at((*x, *y));
 
-        if let map::Tile::Neighbor(count) = tile {
-            let text_string = if tile_is_visible {
-                format!("{count}")
-            } else {
-                String::new()
-            };
+        let text_string = match tile {
+            map::Tile::Neighbor(count) => {
+                if tile_is_visible {
+                    format!("{count}")
+                } else {
+                    String::new()
+                }
+            }
+            _ => String::new(),
+        };
 
-            text.sections = vec![TextSection::new(text_string, text_style.clone())];
-        }
+        text.sections = vec![TextSection::new(text_string, text_style.clone())];
     }
 
     // We just redrew, don't need to anymore
     needs_redraw.0 = false;
+}
+
+fn reset_map(
+    mut commands: Commands,
+    mut needs_redraw: ResMut<MapNeedsRedraw>,
+    map_query: Query<Entity, With<Map>>,
+    keys: Res<Input<KeyCode>>,
+) {
+    if keys.just_pressed(KeyCode::Escape) {
+        let map_entity = map_query.get_single().unwrap();
+
+        commands.entity(map_entity).despawn();
+        commands.spawn(Map::new(map::MINE_COUNT));
+
+        needs_redraw.0 = true;
+    }
 }
